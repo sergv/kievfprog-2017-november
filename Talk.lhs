@@ -16,7 +16,7 @@
 %include lhs2TeX.fmt
 %include polycode.fmt
 
-\usepackage[english]{babel}
+\usepackage[greek, english]{babel}
 \usepackage[utf8x]{inputenc}
 
 % Comment the following lines to use the default Computer Modern font
@@ -28,6 +28,7 @@
 
 \usepackage{tikz}
 \usepackage{tikz-qtree,tikz-qtree-compat}
+\usepackage{tikz-cd}
 \usepackage{hyperref}
 \usepackage{xcolor}
 \usepackage{ulem} % for \sout - striked-out text
@@ -63,7 +64,7 @@
 \date{2017-11-17}
 
 % Let emphasize actually italicize text.
-\renewcommand\emph{\it}
+\renewcommand\emph{\textit}
 
 \newcommand\doubleplus{+\kern-1.3ex+\kern0.8ex}
 \newcommand\mdoubleplus{\ensuremath{\mathbin{+\mkern-10mu+}}}
@@ -79,6 +80,8 @@
 \newcommand{\emptyStr}{\ensuremath{\varepsilon}}
 \newcommand{\reEps}{\emptyStr}
 
+\newcommand{\evalArrow}{\ensuremath{\Rightarrow}}
+
 % Create some vertical space
 % \newcommand{\verticalSeparator}{\vspace{0.00cm}}
 \newcommand{\verticalSeparator}{\hbox{}}
@@ -91,719 +94,1214 @@
 %format && = "\;{\&\&}\;"
 
 % For workin \eval{...}
-%options ghci
+%options ghci -XDeriveFunctor -XDeriveFoldable -XDeriveTraversable -XGADTs -XKindSignatures -XLambdaCase -XPolyKinds -XRankNTypes -XScopedTypeVariables -XStandaloneDeriving -XTypeApplications
 
-% \eval{take 10 tms}
+% https://wiki.haskell.org/Literate_programming
+\long\def\ignore#1{}
+
+\ignore{
+\begin{code}
+{-# LANGUAGE DeriveFoldable      #-}
+{-# LANGUAGE DeriveFunctor       #-}
+{-# LANGUAGE GADTs               #-}
+{-# LANGUAGE KindSignatures      #-}
+{-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE PolyKinds           #-}
+{-# LANGUAGE RankNTypes          #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE StandaloneDeriving  #-}
+{-# LANGUAGE TypeApplications    #-}
+
+import Data.Coerce
+import Data.Foldable
+import Data.Monoid
+\end{code}
+}
+
 \begin{document}
 
-\begin{frame}[fragile]
+\begin{frame}
   \titlepage
 \end{frame}
 
 % Uncomment these lines for an automatically generated outline.
-\begin{frame}[fragile]{Outline}
- \tableofcontents
+\begin{frame}{Outline}
+  \tableofcontents
 \end{frame}
 
 \section{Introduction}
 
-\begin{frame}[fragile]{What}
+\begin{frame}{What}
 
-  \begin{itemize}[<+->]
-    \item An FP pattern for \sout{working with ASTs} \emph{writing compilers}
-    \item Get recursion out - can change it later
-    \item Let’s go, there’s lot to cover. Ask questions!
-  \end{itemize}
+  An FP pattern for \sout{working with ASTs} \emph{writing compilers}\\
+
+  \pause
+
+  Get recursion out - can change it later\\
+
+  \pause
+
+  Let’s go, there’s lot to cover. Ask questions!
 
 \end{frame}
 
-% \begin{frame}[fragile]{Motivation}
-%
-%   \begin{itemize}[<+->]
-%     \item This talk is something that becomes common knowledge of compiler writers
-%     \item A pattern for working with ASTs
-%     \item A pattern for \sout{working with ASTs} \emph{writing compilers}
-%     \item Functional programming does have some patterns
-%   \end{itemize}
-%
-% % \vskip 1cm
-% %
-% % \begin{block}{Examples}
-% % Some examples of commonly used commands and features are included, to help you get started.
-% % \end{block}
-%
-% \end{frame}
-%
-% \begin{frame}[fragile]{Compilers? Huh?}
-%
-%   At least that’s what I mostly use it for. Is it useful anywhere else?
-%
-%   \verticalSeparator\pause
-%
-%   Why, yes! You can
-%
-%   \begin{itemize}[<+->]
-%     \item Understand what code can and cannot do just by looking at which recursion scheme it uses
-%     \item Study recursion (rich theory (not in this talk though))
-%     \item By separating recursion out we can plug in different scheme that e.g. caches results or parallelizes computations
-%   \end{itemize}
-%
-%   \verticalSeparator\pause
-%
-%   In other words: more modularity, more separation of concerns
-%
-% \end{frame}
-%
-% \begin{frame}[fragile]{Okay, so what is a Recursion Scheme?}
-%
-%   Let’s handle it slowly. The first word is ‘Recursion’. What does that mean?
-%
-%   \verticalSeparator\pause
-%
-%   Yes, there are recursive functions. Factorial! But we are looking a bit further.
-%
-%   \verticalSeparator
-%
-%   We want \emph{datatypes}.
-%
-% \end{frame}
+\section{Recursive datatypes 101 - Lists}
 
-\begin{frame}[fragile]{Okay, so what is a Recursion Scheme?}
+\begin{frame}{What’s in a list?}
 
-  Simple recursive type: a list.
+  List is either empty or an element consed onto another list.
+
+  \verticalSeparator
 
 \begin{code}
-data List a = Nil | Cons a (List a)
+-- Recursive datatype!
+data List a =
+    Nil
+  | Cons a (List a)
+  deriving (Show)
 \end{code}
 
 \end{frame}
 
-% ...
+\begin{frame}{Processing lists}
 
-\begin{frame}[fragile]{Practical use - parallelize traversals!}
+\begin{code}
+-- Let’s multiply all list elements together.
+prodList :: List Double -> Double
+prodList Nil         = 1
+prodList (Cons x xs) = x * prodList xs
+\end{code}
 
-  Monads are our friends
+\begin{code}
+-- And compute length
+lengthList :: List a -> Int
+lengthList Nil         = 0
+lengthList (Cons _ xs) = 1 + lengthList xs
+\end{code}
 
-  % ps add example
+  Expected output\\
+  |prodList   (Cons 1 (Cons 2 (Cons 3 Nil)))| $\evalArrow$ \eval{prodList (Cons 1 (Cons 2 (Cons 3 Nil)))}\\
+  |lengthList (Cons 1 (Cons 2 (Cons 3 Nil)))| $\evalArrow$ \eval{lengthList (Cons 1 (Cons 2 (Cons 3 Nil)))}\\
+
+\end{frame}
+
+\begin{frame}{Explicit recursion leaves out without modularity}
+
+  What if we want to fuse |prodList| and |lengthList|?\\
+
+  Why? - Say, we’d like to do only \emph{one} traversal over a list.\\
+
+  \pause
+
+  Can we reuse already written |prodList| and |lengthList|\\
+
+  \pause
+
+\end{frame}
+
+\begin{frame}{Fusing two list functions}
+
+  Let’s see...\\
+
+  Expected output\\
+  |computeBoth (Cons 1 (Cons 2 (Cons 3 Nil)))| $\evalArrow$ \eval{computeBoth (Cons 1 (Cons 2 (Cons 3 Nil)))}\\
+
+  \pause
+
+  No way to combine |prodList| and |lengthList|. Each
+  function does it’s own traversal and we cannot alter that.
+
+  \pause
+
+\begin{code}
+computeBoth :: List Double -> (Int, Double)
+computeBoth Nil         = (0, 1)
+computeBoth (Cons x xs) =
+  let (len, pr) = computeBoth xs in (len + 1, x * pr)
+\end{code}
+
+  \pause
+
+  NB Even |foldr| does not help us here (homework: convince yourself that it’s the case).
+
+\end{frame}
+
+\section{Recursive datatypes 102 - taking recursion out}
+
+\begin{frame}{The path forward}
+
+  \emph{Key idea}: split datatypes into recursive and non-recursive part.\\
+
+  Let’s try it with lists. I’ll introduce non-recursive part first.\\
+
+  Just go ahead and replace all recursive occurrences with new parameter.
+
+\begin{code}
+-- Base functor that captures the shape of our type.
+data ListF a r =
+    NilF
+  | ConsF a r
+  deriving (Show, Functor)
+\end{code}
+
+\end{frame}
+
+\begin{frame}{The Base Functor}
+
+  What will happen when we start consing like we did before?
+  % Can use this raw functor to specify things like ‘list no longer than 3’.
+
+\begin{spec}
+-- Base functor that captures the shape of our type.
+data ListF a r =
+    NilF
+  | ConsF a r
+  deriving (Show, Functor)
+\end{spec}
+
+  \eval{:t NilF}\\
+  \eval{:t ConsF () NilF}\\
+  \eval{:t ConsF () (ConsF () NilF)}\\
+
+\end{frame}
+
+\begin{frame}{A way to use base functor for lists}
+
+  Can use this raw functor to specify things like ‘list no longer than 3’.
+
+\begin{spec}
+-- Base functor that captures the shape of our type.
+data ListF a r =
+    NilF
+  | ConsF a r
+  deriving (Show, Functor)
+\end{spec}
+
+\begin{code}
+type List3 a = ListF a (ListF a (ListF a ()))
+
+nullList3 :: List3 a -> Bool
+nullList3 NilF = True
+nullList3 _    = False
+\end{code}
+
+\end{frame}
+
+\begin{frame}{We need recursion}
+
+  Still, |List3| is not enough.\\
+
+  We can specify a list of any fixed length, but we cannot nest
+  |ListF|’s to get infinitely-long lists - we will get infinite
+  type!
+
+\end{frame}
+
+\begin{frame}{The missing recursion bit}
+
+  Let’s define a type that will add recursion to the |ListF|.
+
+\begin{code}
+-- Recursive part of our datatype.
+-- NB use newtype to avoid extra layers and have the same runtime
+-- representation as we had before.
+newtype Fix f = Fix (f (Fix f))
+\end{code}
+
+\begin{code}
+-- Unwrap one layer
+unFix :: Fix f -> f (Fix f)
+unFix (Fix x) = x
+\end{code}
+
+\end{frame}
+
+\begin{frame}{Recovering |List|}
+
+  |Fix (ListF a)| will give us exactly the |List a| we had before!
+
+\begin{spec}
+data List a = Nil | Cons a (List a)
+
+newtype Fix f = Fix (f (Fix f))
+
+data ListF a r = NilF | ConsF a r
+\end{spec}
+
+\begin{code}
+-- Convenient type alias that does the job
+type List' a = Fix (ListF a)
+\end{code}
+
+\pause
+
+\begin{itemize}
+\item |Nil| $\Leftrightarrow$ |Fix NilF|\\
+\item |Cons 1 Nil| $\Leftrightarrow$ |Fix (ConsF 1 (Fix NilF))|\\
+\item |Cons 1 (Cons 2 Nil)| $\Leftrightarrow$\\
+  |Fix (ConsF 1 (Fix (ConsF 2 (Fix NilF))))|
+\end{itemize}
+
+\end{frame}
+
+\begin{frame}{How to work with this}
+
+  Great, now we can rewrite |List a| as |Fix (ListF a)|!!\\
+
+  What now??\\
+
+  \pause
+
+  Let’s actually look at recursion schemes.
+
+\end{frame}
+
+\begin{frame}{Our first recursion scheme}
+
+  The most basic recursion scheme bears proud name \emph{catamorphism}.\\
+
+  The name comes from from the Greek: {\greektext κατά} “downwards” and {\greektext μορφή} “form, shape”. (\href{https://en.wikipedia.org/wiki/Catamorphism}{Wikipedia}).\\
+
+  One cool bit is that catamorphism’s definition can be inferred from
+  its commutative diagram (how cool is that!).
+
+\end{frame}
+
+\begin{frame}{Catamorphism from a commutative diagram}
+
+  But let’s write function’s type first. We actually want something this:
+
+\begin{spec}
+cata :: (f a -> a) -> Fix f -> a
+\end{spec}
+
+  We’ll revise this a bit afer looking at the diagram.\\
+
+  For now just note that first argument is called algebra and that
+  catamorphism collapses possibly infinitely many layers with an algebra.
+
+\end{frame}
+
+\begin{frame}{The diagram}
+
+\begin{spec}
+cata :: (f a -> a) -> Fix f -> a
+\end{spec}
+
+\begin{center}
+  \begin{tikzpicture}[ampersand replacement=\&]
+    \matrix (m) [matrix of math nodes,row sep=7em,column sep=9em,minimum width=2em]
+    {
+      {|f (Fix f)|} \& {|f a|} \\
+      {|Fix f|}     \& {|a|}   \\
+    };
+    \path[-stealth]
+    (m-2-1) edge [double] node [below] {|cata f|} (m-2-2) ;
+  \end{tikzpicture}
+\end{center}
+
+\end{frame}
+
+\begin{frame}{The diagram 2}
+
+\begin{spec}
+cata :: (f a -> a) -> Fix f -> a
+\end{spec}
+
+\begin{center}
+  \begin{tikzpicture}[ampersand replacement=\&]
+    \matrix (m) [matrix of math nodes,row sep=7em,column sep=9em,minimum width=2em]
+    {
+      {|f (Fix f)|} \& {|f a|} \\
+      {|Fix f|}     \& {|a|}   \\
+    };
+    \path[-stealth]
+    (m-2-1) edge [double] node [below] {|cata f|} (m-2-2) ;
+    \path[-stealth]
+    (m-2-1) edge node [left]  {|unFix|} (m-1-1) ;
+  \end{tikzpicture}
+\end{center}
+
+\end{frame}
+
+\begin{frame}{The diagram 3}
+
+\begin{spec}
+cata :: (f a -> a) -> Fix f -> a
+\end{spec}
+
+\begin{center}
+  \begin{tikzpicture}[ampersand replacement=\&]
+    \matrix (m) [matrix of math nodes,row sep=7em,column sep=9em,minimum width=2em]
+    {
+      {|f (Fix f)|} \& {|f a|} \\
+      {|Fix f|}     \& {|a|}   \\
+    };
+    \path[-stealth]
+    (m-2-1) edge [double] node [below] {|cata f|} (m-2-2) ;
+    \path[-stealth]
+    (m-2-1) edge node [left]  {|unFix|} (m-1-1) ;
+    \path[-stealth]
+    (m-1-2) edge node [right]  {|f|} (m-2-2) ;
+  \end{tikzpicture}
+\end{center}
+
+\end{frame}
+
+\begin{frame}{The complete diagram}
+
+%{
+%format lookHere = "\begin{alertenv}" Functor " f => \end{alertenv}"
+\begin{spec}
+fmap :: Functor f => (a -> b) -> f a -> f b
+
+cata :: lookHere (f a -> a) -> Fix f -> a
+\end{spec}
+%}
+
+\begin{center}
+  \begin{tikzpicture}[ampersand replacement=\&]
+    \matrix (m) [matrix of math nodes,row sep=7em,column sep=9em,minimum width=2em]
+    {
+      {|f (Fix f)|} \& {|f a|} \\
+      {|Fix f|}     \& {|a|}   \\
+    };
+    \path[-stealth]
+    (m-2-1) edge [double] node [below] {|cata f|} (m-2-2) ;
+    \path[-stealth]
+    (m-2-1) edge node [left]  {|unFix|} (m-1-1) ;
+    \path[-stealth]
+    (m-1-2) edge node [right]  {|f|} (m-2-2) ;
+    \path[-stealth]
+    (m-1-1) edge node [above]  {|fmap (cata f)|} (m-1-2) ;
+  \end{tikzpicture}
+\end{center}
+
+\end{frame}
+
+\begin{frame}{Read the diagram into a function}
+
+\begin{code}
+cata :: Functor f => (f a -> a) -> Fix f -> a
+cata alg = go
+  where
+    go = alg . fmap go . unFix
+\end{code}
+
+\begin{center}
+  \begin{tikzpicture}[ampersand replacement=\&]
+    \matrix (m) [matrix of math nodes,row sep=7em,column sep=9em,minimum width=2em]
+    {
+      {|f (Fix f)|} \& {|f a|} \\
+      {|Fix f|}     \& {|a|}   \\
+    };
+    \path[-stealth]
+    (m-2-1) edge node [below] {|cata f|} (m-2-2) ;
+    \path[-stealth]
+    (m-2-1) edge node [left]  {|unFix|} (m-1-1) ;
+    \path[-stealth]
+    (m-1-2) edge node [right]  {|f|} (m-2-2) ;
+    \path[-stealth]
+    (m-1-1) edge node [above]  {|fmap (cata f)|} (m-1-2) ;
+  \end{tikzpicture}
+\end{center}
+
+\end{frame}
+
+\begin{frame}{Let’s compute length with our new tool}
+
+\begin{spec}
+cata :: Functor f => (f a -> a) -> Fix f -> a
+\end{spec}
+
+%{
+%format \ = "\textbackslash{}"
+\begin{code}
+lenAlg :: ListF a Int -> Int
+lenAlg = \case
+  NilF      -> 0
+  ConsF _ x -> x + 1
+
+lengthListF :: List' a -> Int
+lengthListF = cata lenAlg
+\end{code}
+%}
+
+  Run it\\
+  |lengthListF (Fix (ConsF 3 (Fix (ConsF 4 (Fix NilF)))))|\\
+  $\evalArrow$ \eval{lengthListF (Fix (ConsF 3 (Fix (ConsF 4 (Fix NilF)))))}\\
+
+\end{frame}
+
+\begin{frame}{Let’s compute product with our new tool}
+
+\begin{spec}
+cata :: Functor f => (f a -> a) -> Fix f -> a
+\end{spec}
+
+%{
+%format \ = "\textbackslash{}"
+\begin{code}
+prodAlg :: ListF Double Double -> Double
+prodAlg = \case
+  NilF      -> 1
+  ConsF x y -> x * y
+
+prodListF :: List' Double -> Double
+prodListF = cata prodAlg
+\end{code}
+%}
+
+  Run it\\
+  |prodListF (Fix (ConsF 3 (Fix (ConsF 4 (Fix NilF)))))|\\
+  $\evalArrow$ \eval{prodListF (Fix (ConsF 3 (Fix (ConsF 4 (Fix NilF)))))}\\
+
+\end{frame}
+
+\begin{frame}{On to fusion}
+
+\begin{spec}
+cata :: Functor f => (f a -> a) -> Fix f -> a
+fmap :: Functor f => (a -> b) -> f a -> f b
+fst  :: (a, b) -> a
+snd  :: (a, b) -> b
+\end{spec}
+
+%{
+%format \ = "\textbackslash{}"
+\begin{code}
+fuseAlgs
+  :: Functor f
+  => (f a -> a)
+  ->  (f b -> b)
+  ->  (f (a, b) -> (a, b))
+fuseAlgs f g = \x -> (f (fmap fst x), g (fmap snd x))
+
+lenWithProdListF :: List' Double -> (Int, Double)
+lenWithProdListF = cata (fuseAlgs lenAlg prodAlg)
+\end{code}
+%}
+
+  \pause
+
+  |lenWithProdListF (Fix (ConsF 3 (Fix (ConsF 4 (Fix NilF)))))|\\
+  $\evalArrow$ \eval{lenWithProdListF (Fix (ConsF 3 (Fix (ConsF 4 (Fix NilF)))))}\\
+
+\end{frame}
+
+\section{On to compilers}
+
+\begin{frame}{Compiler datatypes}
+
+  Compilers work with \emph{abstract syntax trees}.\\
+
+  We need a simple tree type for illustration purposes.\\
+
+  \pause
+  \verticalSeparator
+
+  Hutton’s Razor - very simple AST to try ideas on.
+
+\begin{code}
+data HuttonExpr =
+    Lit Double
+  | Add HuttonExpr HuttonExpr
+\end{code}
+
+\end{frame}
+
+\begin{frame}{Compiler datatypes from a visual standpoint}
+
+  Trees branch, lists are linear.
+
+  \begin{flushleft}
+    |Cons 1 (Cons 2 (Cons 3 Nil))|
+  \end{flushleft}
+
+  \vspace{-10mm}
+
+  \begin{figure}
+    \tikzset{every picture/.style={baseline=(current bounding box.north)}}
+    \begin{minipage}[t]{0.48\textwidth}
+      \centering
+      \begin{tikzpicture}
+        \Tree [.Cons \node{1}; [.Cons \node{2}; [.Cons \node{3}; [.Nil ] ] ] ]
+      \end{tikzpicture}
+    \end{minipage}%
+    %
+    \begin{minipage}[t]{0.48\textwidth}
+      \centering
+      \begin{tikzpicture}
+        \Tree [.Add [.Add [.Lit \node{5}; ] [.Add [.Lit \node{2}; ] [.Lit \node{3}; ] ] ] [.Lit \node{7}; ] ]
+      \end{tikzpicture}
+    \end{minipage}
+  \end{figure}
+
+  \begin{flushright}
+    |Add (Add (Lit 5) (Add (Lit 2) (Lit 3))) (Lit 7)|
+  \end{flushright}
+
+\end{frame}
+
+\begin{frame}{What we do with expressions - Evaluate}
+
+  Let’s evaluate |HuttonExpr|
+
+\begin{code}
+evalHutton :: HuttonExpr -> Double
+evalHutton (Lit n)   = n
+evalHutton (Add x y) = evalHutton x + evalHutton y
+\end{code}
+
+  \pause
+  \verticalSeparator
+
+  Run it\\
+  |evalHutton (Add (Add (Lit 5) (Add (Lit 2) (Lit 3))) (Lit 7))|\\
+  $\evalArrow$ \eval{evalHutton (Add (Add (Lit 5) (Add (Lit 2) (Lit 3))) (Lit 7))}
+
+  \pause
+  % \verticalSeparator
+  %
+  % All issues that plagued |prodList| and |lengthList| will
+  % show up here as well. Now we’re going to fix them.
+
+\end{frame}
+
+\begin{frame}{What we do with expressions - Compute height}
+
+  Say, we want to place all arguments on a stack when generating code.\\
+
+  We’d like to know the maximum depth of the stack we’ll need...
+
+\begin{code}
+depthHutton :: HuttonExpr -> Int
+depthHutton (Lit _)   = 1
+depthHutton (Add x y) =
+  1 + (depthHutton x `max` depthHutton y)
+\end{code}
+
+  \pause
+  \verticalSeparator
+
+  Run it\\
+  |depthHutton (Add (Add (Lit 5) (Add (Lit 2) (Lit 3))) (Lit 7))|\\
+  $\evalArrow$ \eval{depthHutton (Add (Add (Lit 5) (Add (Lit 2) (Lit 3))) (Lit 7))}
+
+\end{frame}
+
+\begin{frame}{Unfix the |HuttonExpr|}
+
+  All issues that plagued |prodList| and |lengthList| will
+  show up with |evalHutton| and |depthHutton| as well. Let’s fix them
+
+\begin{code}
+data HuttonExprF r =
+    LitF Double
+  | AddF r r
+  deriving (Show, Functor, Foldable)
+
+type HuttonExpr' = Fix HuttonExprF
+\end{code}
+
+\end{frame}
+
+\begin{frame}{Redefine our functions}
+
+\begin{spec}
+data HuttonExprF r =
+    LitF Double
+  | AddF r r
+  deriving (Show, Functor, Foldable)
+
+fold :: (Foldable f, Monoid a) => f a -> a
+\end{spec}
+
+%{
+%format \ = "\textbackslash{}"
+\begin{code}
+depthAlg :: HuttonExprF Int -> Int
+depthAlg = \case
+  LitF _   -> 1
+  AddF x y -> 1 + (x `max` y)
+\end{code}
+
+\pause
+\end{frame}
+
+\begin{frame}{Monoids simplify algebras a lot}
+
+\begin{code}
+newtype SumMonoid = SumMonoid Double deriving (Show)
+
+instance Monoid SumMonoid where
+  mempty  = SumMonoid 0
+  mappend = coerce ((+) @Double)
+
+evalAlg :: HuttonExprF SumMonoid -> SumMonoid
+evalAlg = \case
+  LitF x -> SumMonoid x
+  e      -> fold e
+\end{code}
+%}
+
+\end{frame}
+
+\begin{frame}{Can fuse those with function we defined before}
+
+%{
+%format \ = "\textbackslash{}"
+\begin{spec}
+fuseAlgs
+  :: Functor f
+  => (f a -> a)
+  ->  (f b -> b)
+  ->  (f (a, b) -> (a, b))
+fuseAlgs f g = \x -> (f (fmap fst x), g (fmap snd x))
+\end{spec}
+
+\begin{code}
+evalWithDepth :: HuttonExpr' -> (Double, Int)
+evalWithDepth = coerce (cata (fuseAlgs evalAlg depthAlg))
+\end{code}
+%}
+
+\begin{verbatim}
+evalWithDepth
+  (Fix (AddF
+    (Fix (AddF
+      (Fix (LitF 5))
+      (Fix (AddF (Fix (LitF 2)) (Fix (LitF 3))))))
+    (Fix (LitF 7))))
+\end{verbatim}
+  $\evalArrow$ \eval{evalWithDepth (Fix (AddF
+       (Fix (AddF
+         (Fix (LitF 5))
+         (Fix (AddF (Fix (LitF 2)) (Fix (LitF 3))))))
+       (Fix (LitF 7))))}
+
+\end{frame}
+
+\section{Compilers - annotating expressions}
+
+\begin{frame}{Annotating all nodes with a common value}
+
+  Say, we are parsing our expressions from a file.\\
+
+  Each expression has position that we’d like to keep around.\\
+
+  What do we usually do to add positions to each node?
+
+\begin{spec}
+-- Just an example
+newtype Line     = Line Int
+newtype Column   = Column Int
+data    Position = Position String Line Column
+
+-- Try adding annotations here
+data HuttonExpr =
+    Lit Double
+  | Add HuttonExpr HuttonExpr
+\end{spec}
+
+\end{frame}
+
+\begin{frame}{How to add position without recursion schemes - simple solution}
+
+  For one, we can just go ahead and annotate each constructor
+
+%{
+%format lookHere = "\begin{alertenv}" Position "\end{alertenv}"
+\begin{spec}
+data Position = ...
+
+data HuttonExpr =
+    Lit lookHere Double
+  | Add lookHere HuttonExpr HuttonExpr
+\end{spec}
+%}
+
+\pause
+Pro: very simple
+
+\pause
+Cons:
+\begin{itemize}[<+->]
+\item Not really feasible if expression type has nearly \emph{100 constructors} (a real case).
+\item When constructing expressions we must \emph{always} some position. This leads to lots of meaningless positions
+\end{itemize}
+
+\end{frame}
+
+\begin{frame}{How to add position without recursion schemes - smarter solution}
+
+  Okay, we can factor out common field
+
+%{
+%format lookHere = "\begin{alertenv}" Position "\end{alertenv}"
+\begin{spec}
+data Position = ...
+
+data HuttonExpr = HuttonExpr lookHere HuttonExprBase
+
+data HuttonExprBase =
+    Lit Double
+  | Add HuttonExpr HuttonExpr
+\end{spec}
+%}
+
+\pause
+Pro: still pretty simple
+
+\pause
+Cons:
+\begin{itemize}[<+->]
+\item Now data type is less convenient to work with - try matching 2 or 3 levels deep in a function
+\item Still lots of dummy positions when constructing expressions
+\end{itemize}
+
+\end{frame}
+
+\begin{frame}{A solution through factored recursion}
+
+  This is where |Cofree| comes in. Compare against |Fix|.\\
+
+  That’s the cofree comonad you might’ve heard of. It’s also helpful
+  without |Comonad| instance.
+
+\begin{spec}
+newtype Fix f = Fix (f Fix)
+\end{spec}
+
+\begin{code}
+data Cofree f a = a :< Cofree f a
+  deriving (Show, Functor, Foldable)
+\end{code}
+
+%{
+%format lookHere = "\begin{alertenv}" Position "\end{alertenv}"
+\begin{spec}
+data HuttonExprF r =
+    LitF Double
+  | AddF r r
+  deriving (Show, Functor, Foldable)
+
+type AnnotatedHuttonExpr = Cofree HuttonExprF Position
+\end{spec}
+%}
+
+\pause
+Pro: can ignore all positions and get |Fix|’ed |HuttonExprF|
+
+\pause
+Cons: requires unfixed type
+
+\end{frame}
+
+\section{Compilers - adding variables}
+
+\begin{frame}{On to functions}
+
+  We want to model functions with our |HuttonExpr|.\\
+
+  Functions have arguments. Functions of 1 argument with currying will be enough\\
+
+  Quiz: where to put variables if we had old |HuttonExpr|?\\
+
+\begin{spec}
+-- If you thought annotations were easy, try adding variables here!!
+data HuttonExpr =
+    Lit Double
+  | Add HuttonExpr HuttonExpr
+\end{spec}
+
+\pause
+
+There’s simply no place to do this! We \emph{have} to add new costructor and
+rewrite all our functions to handle it.
+
+\end{frame}
+
+\begin{frame}{Variables - add new costructor}
+
+\begin{spec}
+data HuttonExprVars a =
+    Lit Double
+  | Add HuttonExpr HuttonExpr
+  | Var a
+\end{spec}
+
+This is actually pretty good.\\
+
+Via clever introduction of the new parameter, we can recover old
+expressions without variables by using |Void|, a type without
+costructors.
+
+\begin{spec}
+-- No constructors, ergo no values
+-- (except undefined, but it’s morally correct to forget it)
+data Void
+
+type HuttonExpr = HuttonExprVars Void
+\end{spec}
+
+\end{frame}
+
+\begin{frame}{Variables - add new costructor 2}
+
+\begin{spec}
+data HuttonExprVars a =
+    Lit Double
+  | Add HuttonExpr HuttonExpr
+  | Var a
+
+type HuttonExpr = HuttonExprVars Void
+\end{spec}
+
+Pro: may be good enough to get the job done\\
+
+\pause
+Cons:
+\begin{itemize}[<+->]
+\item Used a parameter - our type may already have a few of those (5 is not a limit in the RealWorld\texttrademark)
+\item Pattern match completeness checker will still expect us to handle new |Var| case even when working with |HuttonExprVars Void|
+\end{itemize}
+
+\end{frame}
+
+\begin{frame}{Can modularized recursion help us here?}
+
+  Sure it can! Meet |Free| - a categorical\texttrademark dual of |Cofree|.\\
+
+  That’s the free monad you might’ve heard of. It’s also helpful
+  without |Monad| instance.
+
+\begin{code}
+data Free f a =
+    Pure a
+  | Free (f (Free f a))
+  deriving (Functor, Foldable)
+
+newtype DeBruijn = DeBruijn Int
+
+type HuttonExprVars = Free HuttonExprF DeBruijn
+\end{code}
+
+\end{frame}
+
+\section{Compilers - adding a \emph{bit more} type safety}
+
+\begin{frame}{More complicated ASTs may have invariants}
+
+  That was fun! However, what if our expr can produce either an
+  integer or a bool when evaluated?
+
+\begin{code}
+data IntBoolExpr =
+    LitInt Int
+  | LitBool Bool
+  | IBAdd IntBoolExpr IntBoolExpr
+  | IBLessThan IntBoolExpr IntBoolExpr
+  | IBIF
+      IntBoolExpr -- must be a bool expr
+      IntBoolExpr -- can be any expr
+      IntBoolExpr -- can be any expr
+\end{code}
+
+\end{frame}
+
+\begin{frame}{Can represent invalid expressions...}
+
+\begin{spec}
+data IntBoolExpr =
+    LitInt Int
+  | LitBool Bool
+  | IBAdd IntBoolExpr IntBoolExpr
+  | IBLessThan IntBoolExpr IntBoolExpr
+  | IBIF
+      IntBoolExpr -- must be a bool expr
+      IntBoolExpr -- can be any expr
+      IntBoolExpr -- can be any expr
+\end{spec}
+
+\begin{code}
+-- Breaches every invariant we have...
+wat :: IntBoolExpr
+wat =
+  IBIF
+    (LitInt 10)
+    (LitBool True)
+    (IBAdd (LitBool False) (LitInt 1))
+\end{code}
+
+\end{frame}
+
+\begin{frame}{Let’s add types so that ill-typed terms will be unrepresentable}
+
+  GADTs to the rescue
+
+\begin{code}
+data Expr t where
+  ELitInt   :: Int  -> Expr Int
+  ELitBool  :: Bool -> Expr Bool
+  EAdd      :: Expr Int -> Expr Int -> Expr Int
+  ELessThan :: Expr Int -> Expr Int -> Expr Bool
+  EIf       :: Expr Bool -> Expr a -> Expr a -> Expr a
+\end{code}
+
+\end{frame}
+
+\begin{frame}[fragile]{It works}
+
+Does not compile |EIf (ELitInt 10) (ELitBool True) (EAdd (ELitBool False) (ELitInt 1))|:
+
+\begin{verbatim}
+<interactive>:1:6: error:
+    * Couldn't match type 'Int' with 'Bool'
+      Expected type: Expr Bool
+        Actual type: Expr Int
+    * In the first argument of 'EIf', namely '(ELitInt 10)'
+      In the expression:
+        EIf
+          (ELitInt 10) (ELitBool True) (EAdd (ELitBool False) (ELitInt 1))
+
+<interactive>:1:35: error:
+    * Couldn't match type 'Int' with 'Bool'
+      Expected type: Expr Bool
+        Actual type: Expr Int
+    * In the third argument of 'EIf', namely
+        '(EAdd (ELitBool False) (ELitInt 1))'
+      In the expression:
+        EIf
+          (ELitInt 10) (ELitBool True) (EAdd (ELitBool False) (ELitInt 1))
+
+<interactive>:1:41: error:
+    * Couldn't match type 'Bool' with 'Int'
+      Expected type: Expr Int
+        Actual type: Expr Bool
+    * In the first argument of 'EAdd', namely '(ELitBool False)'
+      In the third argument of 'EIf', namely
+        '(EAdd (ELitBool False) (ELitInt 1))'
+      In the expression:
+        EIf
+          (ELitInt 10) (ELitBool True) (EAdd (ELitBool False) (ELitInt 1))
+\end{verbatim}
+
+\end{frame}
+
+\begin{frame}{But I want my recursion schemes goodness back!}
+
+  We just need higher-order recursion schemes.\\
+
+  Observe that |Expr| has a type parameter but it is not a |Functor|.
+  It’s something different.\\
+
+  Let’s start with a base functor, as before.
+\end{frame}
+
+\begin{frame}{Indexed base functor}
+
+  Replace all the recursive positions, add new parameter. The only
+  difference: parameter has to be indexed.
+
+\begin{spec}
+data ExprF h ix where
+  ELitIntF   :: Int  -> ExprF h Int
+  ELitBoolF  :: Bool -> ExprF h Bool
+  EAddF      :: h Int -> h Int -> ExprF h Int
+  ELessThanF :: h Int -> h Int -> ExprF h Bool
+  EIfF       :: h Bool -> h a -> h a -> ExprF h a
+\end{spec}
+
+\end{frame}
+
+\begin{frame}{Indexed base functor with kind signatures}
+
+  I have just added kind signatures to the parameters
+
+\begin{code}
+data ExprF (h :: k -> *) (ix :: k) where
+  ELitIntF   :: Int  -> ExprF h Int
+  ELitBoolF  :: Bool -> ExprF h Bool
+  EAddF      :: h Int -> h Int -> ExprF h Int
+  ELessThanF :: h Int -> h Int -> ExprF h Bool
+  EIfF       :: h Bool -> h a -> h a -> ExprF h a
+\end{code}
+
+\end{frame}
+
+\begin{frame}{Indexed recursion combinator}
+
+  Without further ado, this is how |Fix| should look like for GADTs
+  with a parameter (with polykinds):
+
+\begin{code}
+-- Just ignore the kinds if they upset your senses...
+newtype HFix (f :: (k -> *) -> k -> *) (ix :: k) =
+  HFix (f (HFix f) ix)
+
+unHFix :: HFix f ix -> f (HFix f) ix
+unHFix (HFix x) = x
+\end{code}
+
+\end{frame}
+
+\begin{frame}{We still need functors}
+
+  To define |cata| we needed a |Functor|. Here it’s similar enough -
+  our functor should preserve indices:
+
+%{
+%format \ = "\textbackslash{}"
+\begin{code}
+class HFunctor (f :: (k -> *) -> k -> *) where
+  hfmap :: (forall ix'. g ix' -> h ix') -> f g ix -> f h ix
+
+-- Can derive with TH, if you like
+instance HFunctor ExprF where
+  hfmap h = \case
+    ELitIntF n     -> ELitIntF n
+    ELitBoolF b    -> ELitBoolF b
+    EAddF x y      -> EAddF (h x) (h y)
+    ELessThanF x y -> ELessThanF (h x) (h y)
+    EIfF c t f     -> EIfF (h c) (h t) (h f)
+\end{code}
+%}
+
+\end{frame}
+
+\begin{frame}{Find 10 differences with |cata|...}
+
+\begin{spec}
+cata :: Functor f => (f a -> a) -> Fix f -> a
+cata alg = go
+  where
+    go = alg . fmap go . unFix
+\end{spec}
+
+\begin{code}
+hcata :: forall f g ix. HFunctor f => (forall ix. f g ix -> g ix) -> HFix f ix -> g ix
+hcata alg = go
+  where
+    go :: forall ix. HFix f ix -> g ix
+    go = alg . hfmap go . unHFix
+\end{code}
+
+\end{frame}
+
+\begin{frame}{Now we can evaluate safely}
+
+%{
+%format \ = "\textbackslash{}"
+\begin{code}
+data Value ix where
+  VInt  :: Int  -> Value Int
+  VBool :: Bool -> Value Bool
+deriving instance Show (Value ix)
+
+hevalAlg :: ExprF Value ix -> Value ix
+hevalAlg = \case
+  ELitIntF   n                 -> VInt n
+  ELitBoolF  b                 -> VBool b
+  EAddF      (VInt x) (VInt y) -> VInt (x + y)
+  ELessThanF (VInt x) (VInt y) -> VBool (x < y)
+  EIfF       (VBool c) t f     -> if c then t else f
+
+type Expr' = HFix ExprF
+
+heval :: Expr' ix -> Value ix
+heval = hcata hevalAlg
+\end{code}
+%}
+
+\end{frame}
+
+\begin{frame}{Does it actually run??}
+
+  Yes it does!!
+
+\begin{spec}
+data Value ix where
+  VInt  :: Int  -> Value Int
+  VBool :: Bool -> Value Bool
+
+heval :: Expr' ix -> Value ix
+\end{spec}
+
+\begin{center}
+\line(1,0){250}
+\end{center}
+
+\begin{verbatim}
+heval
+  (HFix (EIfF
+    (HFix (ELitBoolF False))
+    (HFix (ELitIntF 1))
+    (HFix (ELitIntF 42))))
+\end{verbatim}
+  $\evalArrow$ \eval{heval (HFix (EIfF (HFix (ELitBoolF False)) (HFix (ELitIntF 1)) (HFix (ELitIntF 42))))}
 
 \end{frame}
 
 % ...
 
-\begin{frame}[fragile]{Practical use - cache traversals!!}
+% \begin{frame}{Practical use - parallelize traversals!}
+%
+%   Monads are our friends
+%
+%   % ps add example
+%
+% \end{frame}
+%
+% % ...
+%
+% \begin{frame}{Practical use - cache traversals!!}
+%
+%   Monads prove to our friends once again
+%
+%   % ps add example
+%
+% \end{frame}
 
-  Monads prove to our friends once again
+\section{Wrapping up}
 
-  % ps add example
+\begin{frame}{More recursion schemes}
+
+  I have only scratched the surface. Look:
+
+  \begin{itemize}[<+->]
+  \item Folding to a value
+    \begin{itemize}[<+->]
+    \item Catamorphism - you have learned it in this talk. Well done!
+    \item Paramorphism - folding with access to the original expression
+    \item Zygomorphism - neat combination of several algebras so that they can use results of each other
+    \item Histomorphism - dynamic programming, algebra has access to all previously computed results for a tree
+    \end{itemize}
+  \item Unfolding from a value
+    \begin{itemize}[<+->]
+    \item Anamorphism - one level at a time
+    \item Futumorphism - multiple levels at a time
+    \end{itemize}
+  \item Fused
+    \begin{itemize}[<+->]
+    \item Metamorphism = |ana . cata|
+    \item Hylomorphism = |cata . ana|
+    \item Dynamorphism = |histo . ana|
+    \item Chronomorphism = |futu . histo|
+    \end{itemize}
+  \item Just a joke
+    \begin{itemize}
+    \item Zygohistomorphic prepromorphism
+    \end{itemize}
+  \end{itemize}
+
+  \pause
+
+  Comonads can also help to unify some of those.\\
 
 \end{frame}
 
-
-% \section{Regular Expressions refresher}
-%
-% \begin{frame}[fragile]{Regular Expressions refresher}{Definitions}
-%
-%   Regular Expression are an expression language for describing sets of strings.\\
-%   \verticalSeparator\pause
-%
-%   Strings - sequences of characters. $a, b, c$ - characters, $aaaab, c$ - strings\\
-%   \verticalSeparator\pause
-%
-%   Symbol $\emptyStr$ denotes empty string\\
-%   \verticalSeparator\pause
-%
-%   String concatenation is denoted with $\mdoubleplus$: $\strConc{aaaaaa}{b} = aaaaaab$\\
-%
-%   \[\forall x: \strConc{x}{\emptyStr} = \strConc{\emptyStr}{x} = x \]\\
-%   \verticalSeparator\pause
-%
-%   Alphabet - set of all characters, denoted $\Sigma$. E.g. $\Sigma = \lbrace a, b, c \rbrace$.\\
-%   \verticalSeparator
-%
-%   % Sample set of strings: $\lbrace b, ab, aab, \ldots, aaaaaaaaab, \ldots \rbrace$\\
-%   % \verticalSeparator
-% \end{frame}
-%
-% \begin{frame}[fragile]{Regular Expressions refresher}{Introducing Haskell ADT for regexps}
-%   Regular expressions are defined inductively
-%
-% \begin{code}
-% data Sigma = A | B | C
-%   deriving (Show, Eq, Ord, Enum, Bounded)
-%
-% type Str a = [a]
-%
-% data Regex a
-%   =  Eps                     -- Empty regex
-%   |  Sym a                   -- Singleton regex
-%   |  Seq (Regex a) (Regex a) -- Sequence
-%   |  Alt (Regex a) (Regex a) -- Alternatives
-%   |  Rep (Regex a)           -- Repetition
-%   deriving (Show, Eq)
-% \end{code}
-% \end{frame}
-%
-% \begin{frame}[fragile]{Regular Expressions refresher}{Example}
-%
-%   Consider regular expression $\reSeq{\reSeq{\reRep{a}}{b}}{(\reAlt{c}{\reEps})}$
-%
-%   \pause
-%
-%   \[L(\reSeq{\reRep{a}}{\reSeq{b}{\reAlt{\reEps}{c}}}) = \lbrace b, bc, ab, abc, aab, aabc, aaab, aaabc, \ldots \rbrace\]
-%
-%   In Haskell, |re = Seq (Rep (Sym A)) (Seq (Sym B) (Alt Eps (Sym C)))|\\
-%
-%   \pause
-%
-%   Or, with less parens |re = Rep (Sym A) `Seq` Sym B `Seq` Alt Eps (Sym C)|\\
-%
-%   \pause
-%
-%   Expected output\\
-%   |accept re [B]          =>| \eval{accept (Rep (Sym A) `Seq` Sym B `Seq` Alt Eps (Sym C)) [B] }\\
-%   |accept re [B,C]        =>| \eval{accept (Rep (Sym A) `Seq` Sym B `Seq` Alt Eps (Sym C)) [B,C] }\\
-%   |accept re [A,A,A,B]    =>| \eval{accept (Rep (Sym A) `Seq` Sym B `Seq` Alt Eps (Sym C)) [A,A,A,B] }\\
-%   |accept re [A,A,A,C]    =>| \eval{accept (Rep (Sym A) `Seq` Sym B `Seq` Alt Eps (Sym C)) [A,A,A,C] }\\
-%   |accept re [A,A,A,B,C]  =>| \eval{accept (Rep (Sym A) `Seq` Sym B `Seq` Alt Eps (Sym C)) [A,A,A,B,C] }
-% \end{frame}
-%
-%
-% \begin{frame}[fragile]{Regular Expressions refresher}{Defining regexp semantics}
-%   For any regex $\reVar(A)$, notation $L(\reVar{A})$ denotes all strings that
-%   regex matches.
-%
-%   Let’s define regexp semantics in Haskell by definning regexp matching function:
-% \begin{code}
-% accept :: Eq a => Regex a -> Str a -> Bool
-% accept Eps        s  = acceptEps s
-% accept (Sym c)    s  = acceptSym c s
-% accept (Seq x y)  s  = acceptSeq x y s
-% accept (Alt x y)  s  = acceptAlt x y s
-% accept (Rep x)    s  = acceptRep x s
-% \end{code}
-%
-% \end{frame}
-%
-% \begin{frame}[fragile]{Regular Expressions refresher}{Empty string regex}
-%   Empty string - $\reEps$ is a regular expression that matches the empty string.
-%
-%     \[L(\emptyStr) = \lbrace \emptyStr \rbrace\]
-%
-% \begin{code}
-% acceptEps :: Str a -> Bool
-% acceptEps s = null s
-% \end{code}
-%
-% \end{frame}
-%
-% \begin{frame}[fragile]{Regular Expressions refresher}{Singleton character regex}
-%
-%   Atoms - all symbols from $\Sigma$ are regular expressions that match themselves.
-%
-%   \[\forall x \in \Sigma : L(x) = \lbrace x \rbrace\]
-%
-%   Haskell semantics:
-% \begin{code}
-% acceptSym :: Eq a => a -> Str a -> Bool
-% acceptSym c s = s == [c]
-% \end{code}
-%
-% \end{frame}
-%
-% \begin{frame}[fragile]{Regular Expressions refresher}{Concatenation}
-%
-%   Concatenation - if $\reVar{A}$ and $\reVar{B}$ are regular expressions, so is $\reSeq{\reVar{A}}{\reVar{B}}$
-%
-%   \[L(\reSeq{\reVar{A}}{\reVar{B}}) = \lbrace \strConc{x}{y}\, \vpipe\, x \in L(\reVar{A}), \, y \in L(\reVar{B}) \rbrace\]
-%
-%   Haskell semantics:
-% \begin{code}
-% acceptSeq :: Eq a => Regex a -> Regex a -> Str a -> Bool
-% acceptSeq r1 r2 s =
-%   or [ accept r1 s1 && accept r2 s2 | (s1, s2) <- split s ]
-% \end{code}
-%
-% \begin{code}
-% split :: Str a -> [(Str a, Str a)]
-% split xs = map (\(x, y) -> (reverse x, y)) (go [] xs)
-%   where
-%     go p []      = [(p, [])]
-%     go p (c:cs)  = (p, c : cs) : go (c : p) cs
-% \end{code}
-%
-% % Example
-% |split "abc" =>| \eval{split "abc"}
-%
-% \end{frame}
-%
-%
-% \begin{frame}[fragile]{Regular Expressions refresher}{Alternatives}
-%
-%   Alternative - if $\reVar{A}$ and $\reVar{B}$ are regular expressions, so is $\reAlt{\reVar{A}}{\reVar{B}}$
-%
-%   \[L(\reAlt{\reVar{A}}{\reVar{B}}) = L(\reVar{A}) \cup L(\reVar{B}) \]
-%
-%   Haskell semantics:
-% \begin{code}
-% acceptAlt :: Eq a => Regex a -> Regex a -> Str a -> Bool
-% acceptAlt r1 r2 s = accept r1 s || accept r2 s
-% \end{code}
-%
-% \end{frame}
-%
-% \begin{frame}[fragile]{Regular Expressions refresher}{Repetition}
-%
-%   Repetition - also known as Kleene star, if $\reVar{A}$ is a regular expression, so is $\reRep{\reVar{A}}$
-%
-%   \[L(\reRep{\reVar{A}}) = \lbrace \reEps, \reVar{A}, \reSeq{\reVar{A}}{\reVar{A}}, \reSeq{\reVar{A}}{\reSeq{\reVar{A}}{\reVar{A}}}, \ldots \rbrace \]
-%
-%   Haskell semantics:
-% \begin{code}
-% acceptRep :: Eq a => Regex a -> Str a -> Bool
-% acceptRep r s = or [ and [ accept r p | p <- ps ] | ps <- parts s ]
-% \end{code}
-%
-% \begin{code}
-% parts :: Str a -> [[Str a]]
-% parts []      = [[]]
-% parts [c]     = [[[c]]]
-% parts (c:cs)  =
-%   concat [ [(c : p) : ps, [c] : p : ps] | p : ps <- parts cs ]
-% \end{code}
-%
-% % Example
-% |parts "abcd" =>| \eval{parts "abcd"}
-%
-% \end{frame}
-%
-% \begin{frame}[fragile]{Regular Expressions refresher}{What is not a regular expression}
-%   \begin{itemize}[<+->]
-%     \item Some popular implementations allow “regexps” with backreferences, like $(a\vpipe b\vpipe c)\text{\textbackslash} 1$
-%     \item $(.^{*})\text{\textbackslash} 1$ describes non-regular language. Therefore it cannot be converted to finite automaton
-%     \item Generally, we want an automaton since it’s very fast
-%     \item We don’t include backreferences in our regexps. Regexps without them have enough expressive power
-%   \end{itemize}
-% \end{frame}
-%
-% \begin{frame}[fragile]{Regular Expressions refresher}{Drawbacks}
-%   \begin{itemize}[<+->]
-%     \item Although usefull for defining semantics, |accept| function is not appropriate for practical applications.
-%     \item Reliance on function |parts| means exponential worst-case runtime in length of string being matched
-%   \end{itemize}
-% \end{frame}
-%
-% \section{Glushkov Automaton Construction}
-%
-% \begin{frame}[fragile]{Glushkov Automaton Construction}
-%
-%   Glushkov proposed Algorithm for generating Nondeterministic Finite Automaton,
-%   NFA, from regular expression.\\
-%
-%   NFA is a good way to run regexps because
-%   \begin{itemize}[<+->]
-%     \item Size of NFA is linear in size of regular expression
-%     \item Given NFA with $m$ states we can run it on string of $n$ characters in $O(m \cdot n)$ time
-%     \item DFA is simpler than NFA but can have $\Omega(2^m)$ states of states for an NFA with $m$ states.
-%   \end{itemize}
-%
-% \end{frame}
-%
-%
-% \begin{frame}[fragile]{Glushkov Automaton Construction}{Example}
-%
-%   We’re going to fuse translation of regexp to NFA and execution to NFA.
-%
-%   \pause
-%
-%   Glushkov observation: every NFA states corresponds to a position within regexp.
-%   Position is a place where a symbol occurs.\\
-%
-%   \pause
-%
-%   Let’s match $\reSeq{\reRep{(\reSeq{a}{b})}}{\reSeq{a}{c}}$ against “ababac”
-%
-%   \begin{center}
-%     \begin{tikzpicture}% [level 1/.style={level distance=1.5cm}]
-%     \Tree
-%     [.Seq
-%       [.Rep
-%         [.Seq
-%           \node{Sym a};
-%           \node{Sym b};
-%           ]
-%         ]
-%       [.Seq
-%         \node{Sym a};
-%         \node{Sym c};
-%         ]
-%     ]
-%     \end{tikzpicture}
-%   \end{center}
-%
-% \end{frame}
-%
-%
-%
-% \begin{frame}[fragile]{Glushkov Automaton Construction}{Example - step 1}
-%
-%   Let’s match $\reSeq{\reRep{(\reSeq{a}{b})}}{\reSeq{a}{c}}$ against “ababac”
-%
-%   \pause
-%
-%   \begin{center}
-%     “\fbox{a}babac”
-%   \end{center}
-%
-%   \pause
-%
-%   \[\reSeq{\reRep{(\reSeq{\fbox{a}}{b})}}{\reSeq{a}{c}}\]
-%
-%   \pause
-%
-%   \begin{center}
-%     \begin{tikzpicture}
-%     \Tree
-%     [.Seq
-%       [.Rep
-%         [.Seq
-%           \node[draw]{Sym a};
-%           \node{Sym b};
-%           ]
-%         ]
-%       [.Seq
-%         \node[draw]{Sym a};
-%         \node{Sym c};
-%         ]
-%     ]
-%     \end{tikzpicture}
-%   \end{center}
-%
-% \end{frame}
-%
-%
-% \begin{frame}[fragile]{Glushkov Automaton Construction}{Example - step 2}
-%
-%   Let’s match $\reSeq{\reRep{(\reSeq{a}{b})}}{\reSeq{a}{c}}$ against “ababac”
-%
-%   \begin{center}
-%     “a\fbox{b}abac”
-%   \end{center}
-%
-%   \[\reSeq{\reRep{(\reSeq{a}{\fbox{b}})}}{\reSeq{a}{c}}\]
-%
-%   \begin{center}
-%     \begin{tikzpicture}
-%     \Tree
-%     [.Seq
-%       [.Rep
-%         [.Seq
-%           \node{Sym a};
-%           \node[draw]{Sym b};
-%           ]
-%         ]
-%       [.Seq
-%         \node{Sym a};
-%         \node{Sym c};
-%         ]
-%     ]
-%     \end{tikzpicture}
-%   \end{center}
-%
-% \end{frame}
-%
-% \begin{frame}[fragile]{Glushkov Automaton Construction}{Example - step 3}
-%
-%   Let’s match $\reSeq{\reRep{(\reSeq{a}{b})}}{\reSeq{a}{c}}$ against “ababac”
-%
-%   \begin{center}
-%     “ab\fbox{a}bac”
-%   \end{center}
-%
-%   \[\reSeq{\reRep{(\reSeq{\fbox{a}}{b})}}{\reSeq{\fbox{a}}{c}}\]
-%
-%   \begin{center}
-%     \begin{tikzpicture}
-%     \Tree
-%     [.Seq
-%       [.Rep
-%         [.Seq
-%           \node[draw]{Sym a};
-%           \node{Sym b};
-%           ]
-%         ]
-%       [.Seq
-%         \node[draw]{Sym a};
-%         \node{Sym c};
-%         ]
-%     ]
-%     \end{tikzpicture}
-%   \end{center}
-%
-% \end{frame}
-%
-% \begin{frame}[fragile]{Glushkov Automaton Construction}{Example - step 4}
-%
-%   Let’s match $\reSeq{\reRep{(\reSeq{a}{b})}}{\reSeq{a}{c}}$ against “ababac”
-%
-%   \begin{center}
-%     “aba\fbox{b}ac”
-%   \end{center}
-%
-%   \[\reSeq{\reRep{(\reSeq{a}{\fbox{b}})}}{\reSeq{a}{c}}\]
-%
-%   \begin{center}
-%     \begin{tikzpicture}
-%     \Tree
-%     [.Seq
-%       [.Rep
-%         [.Seq
-%           \node{Sym a};
-%           \node[draw]{Sym b};
-%           ]
-%         ]
-%       [.Seq
-%         \node{Sym a};
-%         \node{Sym c};
-%         ]
-%     ]
-%     \end{tikzpicture}
-%   \end{center}
-%
-% \end{frame}
-%
-% \begin{frame}[fragile]{Glushkov Automaton Construction}{Example - step 5}
-%
-%   Let’s match $\reSeq{\reRep{(\reSeq{a}{b})}}{\reSeq{a}{c}}$ against “ababac”
-%
-%   \begin{center}
-%     “abab\fbox{a}c”
-%   \end{center}
-%
-%   \[\reSeq{\reRep{(\reSeq{\fbox{a}}{b})}}{\reSeq{\fbox{a}}{c}}\]
-%
-%   \begin{center}
-%     \begin{tikzpicture}
-%     \Tree
-%     [.Seq
-%       [.Rep
-%         [.Seq
-%           \node[draw]{Sym a};
-%           \node{Sym b};
-%           ]
-%         ]
-%       [.Seq
-%         \node[draw]{Sym a};
-%         \node{Sym c};
-%         ]
-%     ]
-%     \end{tikzpicture}
-%   \end{center}
-%
-% \end{frame}
-%
-% \begin{frame}[fragile]{Glushkov Automaton Construction}{Example - step 6}
-%
-%   Let’s match $\reSeq{\reRep{(\reSeq{a}{b})}}{\reSeq{a}{c}}$ against “ababac”
-%
-%   \begin{center}
-%     “ababa\fbox{c}”
-%   \end{center}
-%
-%   \[\reSeq{\reRep{(\reSeq{a}{b})}}{\reSeq{a}{\fbox{c}}}\]
-%
-%   \begin{center}
-%     \begin{tikzpicture}
-%     \Tree
-%     [.Seq
-%       [.Rep
-%         [.Seq
-%           \node{Sym a};
-%           \node{Sym b};
-%           ]
-%         ]
-%       [.Seq
-%         \node{Sym a};
-%         \node[draw, red]{Sym c};
-%         ]
-%     ]
-%     \end{tikzpicture}
-%   \end{center}
-%
-% \end{frame}
-%
-% \begin{frame}[fragile]{Glushkov Automaton Construction}{Haskell implementation}
-%
-% \begin{code}
-% data Regex' a
-%   =  Eps'                        -- Empty regex
-%   |  Sym' Bool a                 -- Singleton regex
-%   |  Seq' (Regex' a) (Regex' a)  -- Sequence
-%   |  Alt' (Regex' a) (Regex' a)  -- Alternatives
-%   |  Rep' (Regex' a)             -- Repetition
-%   deriving (Show, Eq)
-%
-% -- Convenient constructor
-% sym' :: a -> Regex' a
-% sym' c = Sym' False c
-% \end{code}
-%
-% \end{frame}
-%
-% \begin{frame}[fragile]{Glushkov Automaton Construction}{Moving mark}
-%
-% \begin{code}
-% shift :: Eq a => Bool -> Regex' a -> a -> Regex' a
-% shift  _  Eps'          _   =  Eps'
-% shift  m  (Sym'  _  c)  c'  =  Sym'  (m && c == c') c
-% shift  m  (Alt'  p  q)  c   =  Alt'  (shift m p c)  (shift m q c)
-% shift  m  (Seq'  p  q)  c   =
-%   Seq' (shift m p c) (shift (m && empty p || final p) q c)
-% shift  m  (Rep'  p)     c   = Rep' (shift (m || final p) p c)
-% \end{code}
-%
-% \begin{code}
-% empty :: Regex' a -> Bool
-% empty  Eps'          =  True
-% empty  (Sym'  _  _)  =  False
-% empty  (Alt'  p  q)  =  empty p || empty q
-% empty  (Seq'  p  q)  =  empty p && empty q
-% empty  (Rep'  p)     =  True
-% \end{code}
-%
-% \end{frame}
-%
-% \begin{frame}[fragile]{Glushkov Automaton Construction}{Checking if mark is in the final position}
-%
-% \begin{code}
-% final :: Regex' a -> Bool
-% final  Eps'          =  False
-% final  (Sym'  m  _)  =  m
-% final  (Alt'  p  q)  =  final p || final q
-% final  (Seq'  p  q)  =  final p && empty q || final q
-% final  (Rep'  p)     =  final p
-% \end{code}
-%
-% \end{frame}
-%
-% \begin{frame}[fragile]{Glushkov Automaton Construction}{Matching}
-%
-% \begin{code}
-% accept' :: Eq a => Regex' a -> [a] -> Bool
-% accept' re []        =  empty re
-% accept' re (c : cs)  =  final (foldl (shift False) (shift True re c) cs)
-% \end{code}
-%
-%   \pause
-%
-%   Let’s try our previous test regexp $\reSeq{\reRep{a}}{\reSeq{b}{(\reAlt{\reEps}{c})}}$\\
-%
-%   |re = Rep' (sym' A) `Seq'` sym' B `Seq'` Alt' Eps' (sym' C)|\\
-%
-%   Expected output\\
-%   |accept' re [B]          =>| \eval{accept' (Rep' (sym' A) `Seq'` sym' B `Seq'` Alt' Eps' (sym' C)) [B] }\\
-%   |accept' re [B,C]        =>| \eval{accept' (Rep' (sym' A) `Seq'` sym' B `Seq'` Alt' Eps' (sym' C)) [B,C] }\\
-%   |accept' re [A,A,A,B]    =>| \eval{accept' (Rep' (sym' A) `Seq'` sym' B `Seq'` Alt' Eps' (sym' C)) [A,A,A,B] }\\
-%   |accept' re [A,A,A,C]    =>| \eval{accept' (Rep' (sym' A) `Seq'` sym' B `Seq'` Alt' Eps' (sym' C)) [A,A,A,C] }\\
-%   |accept' re [A,A,A,B,C]  =>| \eval{accept' (Rep' (sym' A) `Seq'` sym' B `Seq'` Alt' Eps' (sym' C)) [A,A,A,B,C] }
-%
-% \end{frame}
-%
-% \begin{frame}[fragile]{Glushkov Automaton Construction}{Improving efficiency}
-%
-%   It’s costly to recompute |final| and |empty| every time. We can memoize them
-%   in expressions
-%
-% \begin{code}
-% data RegexMemo a
-%   =  EpsMemo               -- Empty regex
-%   |  SymMemo  Bool a       -- Singleton regex
-%   |  SeqMemo  (R a) (R a)  -- Sequence
-%   |  AltMemo  (R a) (R a)  -- Alternatives
-%   |  RepMemo  (R a)        -- Repetition
-%   deriving (Show, Eq)
-%
-% data R a = R
-%   { rEmpty  :: Bool
-%   , rFinal  :: Bool
-%   , rRegex  :: RegexMemo a
-%   } deriving (Show, Eq)
-% \end{code}
-%
-% \end{frame}
-%
-% \begin{frame}[fragile]{Glushkov Automaton Construction}{Improving efficiency}
-%
-%   Having defined |RegexMemo| and |R|, we can define smart constructors and we’ll
-%   only need to replace all explicit constructors with smart constructors in
-%   function |shift| to get the benefit.
-%
-%   E.g.
-%
-% \begin{code}
-% reEps :: R a
-% reEps = R
-%   { rEmpty  = True
-%   , rFinal  = False
-%   , rRegex  = EpsMemo
-%   }
-%
-% reAlt :: R a -> R a -> R a
-% reAlt p q = R
-%   { rEmpty  =  rEmpty p  || rEmpty q
-%   , rFinal  =  rFinal p  || rFinal q
-%   , rRegex  =  AltMemo p q
-%   }
-% \end{code}
-%
-% \end{frame}
-%
-%
-% % \section{Regular expressions as an ADT}
-% % \subsection{Straightforward semantics}
-% % \subsection{Glushkov Automaton Construction}
-% \section{Laziness allows matching strictly more expressive languages}
-%
-% \begin{frame}[fragile]{One cool laziness trick}
-%
-%   Laziness allows matching strictly more expressive languages. Even some context-sensitive ones\\
-%
-%   To make our regex lazy we’ll have to add another field that tracks, whether the
-%   expression was active. If it wasn’t, we can avoid forcing it. This would allow
-%   us to operate infinte regexps, which can match some context-free languages and
-%   even some contex-sensitive ones.\\
-%
-%   \pause
-%
-%   Let’s match language of parentheses $\lbrace \emptyStr, (), (()), ()(), (())(), \ldots \rbrace$\\
-%
-%   Our alphabet is $\Sigma = \lbrace (, ) \rbrace$\\
-%
-% \begin{code}
-% data Parens = LParen | RParen deriving (Show, Eq)
-% \end{code}
-%
-%   Now make regex that matches this language\\
-%
-%   |let re = (symL LParen `seqL` re `seqL` symL RParen) `seqL` re in re|\\
-%
-% \end{frame}
-%
-%
-% \begin{frame}[fragile]{One cool laziness trick}{Sample run}
-%
-%   |let re = (symL LParen `seqL` re `seqL` symL RParen) `seqL` re in re|\\
-%
-%   \pause
-%
-%   Try it out
-%
-%   |acceptLazy re [LParen, RParen]                         => True| % \eval{accept' (let re = (sym' LParen `Seq'` re `Seq'` sym' RParen) `Seq'` re in re) [LParen, RParen] }\\
-%   |acceptLazy re [LParen, RParen, LParen, RParen]         => True| % \eval{accept' (let re = (sym' LParen `Seq'` re `Seq'` sym' RParen) `Seq'` re in re) [LParen, RParen, LParen, RParen] }\\
-%   |acceptLazy re [LParen, RParen, LParen, RParen, RParen] => False|
-%
-% \end{frame}
-
-\begin{frame}[fragile]{References}
+\begin{frame}{References}
 
   Lots of resources. In order of increasing difficulty:
 
@@ -811,17 +1309,12 @@ data List a = Nil | Cons a (List a)
     \item Bartosz Milewski blog post \href{https://www.schoolofhaskell.com/user/bartosz/understanding-algebras}{“Understanding F-Algebras”}
     \item Tim Williams slides \href{https://github.com/willtim/recursion-schemes/raw/master/slides-final.pdf}{“Recursion Schemes by Example”}
     \item Tim Williams blog post \href{http://www.timphilipwilliams.com/posts/2013-01-16-fixing-gadts.html}{“Fixing GADTs”}
+    \item Wouter Swierstra \href{http://www.cs.ru.nl/~W.Swierstra/Publications/DataTypesALaCarte.pdf}{Data Types \`{a} la Carte}
   \end{itemize}
-
-% \vskip 1cm
-%
-% \begin{block}{Examples}
-% Some examples of commonly used commands and features are included, to help you get started.
-% \end{block}
 
 \end{frame}
 
-\begin{frame}[fragile]
+\begin{frame}
 
   \begin{center}
     {\Huge Thank you!}\\
