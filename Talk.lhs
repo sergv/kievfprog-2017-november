@@ -369,7 +369,7 @@ type List' a = Fix (ListF a)
 
 \begin{frame}{Catamorphism from a commutative diagram}
 
-  But let’s write function’s type first. We actually want something this:
+  But let’s write function’s type first. We actually want something like this:
 
 \begin{spec}
 cata :: (f a -> a) -> Fix f -> a
@@ -713,8 +713,6 @@ data HuttonExprF r =
     LitF Double
   | AddF r r
   deriving (Show, Functor, Foldable)
-
-fold :: (Foldable f, Monoid a) => f a -> a
 \end{spec}
 
 %{
@@ -730,6 +728,10 @@ depthAlg = \case
 \end{frame}
 
 \begin{frame}{Monoids simplify algebras a lot}
+
+\begin{spec}
+fold :: (Foldable f, Monoid a) => f a -> a
+\end{spec}
 
 \begin{code}
 newtype SumMonoid = SumMonoid Double deriving (Show)
@@ -870,11 +872,11 @@ Cons:
   without |Comonad| instance.
 
 \begin{spec}
-newtype Fix f = Fix (f Fix)
+newtype Fix f = Fix (f (Fix f))
 \end{spec}
 
 \begin{code}
-data Cofree f a = a :< Cofree f a
+data Cofree f a = a :< f (Cofree f a)
   deriving (Show, Functor, Foldable)
 \end{code}
 
